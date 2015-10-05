@@ -5,6 +5,8 @@ Help text, loaded by default
       imacs - possibly the worlds smallest emacs clone!
       (imacs said in Swedish sounds like [eeemacs])
       (c) 2015 Jonas S Karlsson
+      It's an one file embeddable device emacs in
+      about 200+ lines c code.
 
       Usage: ./imacs file.txt
 
