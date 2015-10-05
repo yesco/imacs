@@ -1,0 +1,4 @@
+export COLUMNS; export LINES; gcc imacs.c && ./a.out $*
+
+
+
