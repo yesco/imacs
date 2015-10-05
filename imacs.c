@@ -15,33 +15,7 @@
 
 #define BUFF_SIZE (1024*24)
 int buff_size = BUFF_SIZE;
-char buff[BUFF_SIZE] =
-    "imacs - possibly the worlds smallest emacs clone!\n"
-    "(imacs said in Swedish sounds like [eeemacs])\n"
-    "(c) 2015 Jonas S Karlsson\n"
-    "\n"
-    "Usage: ./imacs file.txt\n"
-    "\n"
-    "Help\n"
-    "====\n"
-    "lines: ^A, ^P, ^N, ^K, ^E\n"
-    "chars: ^B, ^F, ^D, DEL/^H\n"
-    "exit: ^C\n"
-    "\n"
-    "Limitations\n"
-    "===========\n"
-    "- no way to save a file!\n"
-    "- can't handle files with longer lines that terminal width, or more lines than terminal\n"
-    "- tabs... get's funny\n"
-    "- vt100 only\n"
-    "- each keystroke rewrite the screen!\n"
-    "- when you move till after the file end, it gets funny\n"
-    "\n"
-    "Why\n"
-    "===\n"
-    "Support simple editing on embedded systems ala ESP8266 wifi device, 115200 baud\n"
-    ;
-
+char buff[BUFF_SIZE] = "";
 char* buff_end = buff + BUFF_SIZE;
 
 int row = 0;
@@ -141,7 +115,7 @@ int main(int argc, char* argv[]) {
 
     signal(SIGINT, restoreTerminalAndExit);
 
-    if (argc > 1) filename = argv[1];
+    filename = argc > 1 ? argv[1] : "README.md";
     if (filename) readfile(filename);
 
     // loop
