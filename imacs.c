@@ -11,6 +11,8 @@
 #include <termios.h>
 #include <string.h>
 
+// TODO: refactor to create a struct with all the states of a buffer?
+
 #define BUFF_SIZE (1024*24)
 int buff_size = BUFF_SIZE;
 char buff[BUFF_SIZE] =
@@ -28,10 +30,12 @@ char buff[BUFF_SIZE] =
     "\n"
     "Limitations\n"
     "===========\n"
+    "- no way to save a file!\n"
     "- can't handle files with longer lines that terminal width, or more lines than terminal\n"
     "- tabs... get's funny\n"
     "- vt100 only\n"
     "- each keystroke rewrite the screen!\n"
+    "- when you move till after the file end, it gets funny\n"
     "\n"
     "Why\n"
     "===\n"
@@ -81,6 +85,8 @@ void insert(char c) {
 }
 
 void restoreTerminalAndExit(int dummy) {
+    clear();
+    printf("imacs bids you farewell!\n");
     system("stty echo");
     system("stty sane");
     exit(0);
