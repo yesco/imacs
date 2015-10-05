@@ -116,7 +116,7 @@ int readfile(char* filename) {
 void print_modeline(char* filename, int row, int col) {
     gotorc(lines-2, 0);
     inverse(1);
-    printf("-- imacs --**-- %-20s          L%d C%d (text) -------------------------------------", filename, row, col);
+    printf("-- imacs --**-- %-20s L%d C%d (text) --------------------------", filename, row, col);
     inverse(0);
     f();
 }
@@ -189,7 +189,7 @@ int main(int argc, char* argv[]) {
         else if (c == 'B' - 64) col--;
         else if (c == 'A' - 64) col = 0;
         else if (c == 'E' - 64) col = len;
-        else if (c == 10) { insert(c); col = 0; row++; }
+        else if (c == 10 || c == 'J' - 64) { insert('J' - 64); col = 0; row++; }
         else if (c == 12) ; // redraw
         else if (c == 'D' - 64) { memmove(p, p+1, strlen(p+1)+1); }
         else if (c == 'H' - 64 && p > buff) { memmove(p-1, p, strlen(p)+1); col--; }
