@@ -8,21 +8,38 @@
 #include <signal.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <termios.h>
 #include <string.h>
+
+#ifdef OTA
+  #include "espressif/esp_common.h"
+  #include "espressif/sdk_private.h"
+  #include "FreeRTOS.h"
+  #include "task.h"
+  #include "queue.h"
+#else
+  #include <termios.h>
+#endif
 
 // TODO: refactor to create a struct with all the states of a buffer?
 
-#define BUFF_SIZE (1024*24)
+#ifdef OTA
+  #define BUFF_SIZE (2048)
+#else
+  #define BUFF_SIZE (1024*24)
+#endif
+
 int buff_size = BUFF_SIZE;
-char buff[BUFF_SIZE] = "";
-char* buff_end = buff + BUFF_SIZE;
+char* buff = NULL;
+char* buff_end = NULL;
 
 int row = 0;
 int col = 0;
+int scroll = 0;
 
-int lines, columns;
-char* filename = NULL;
+char* filename = "README.md";
+
+int lines = 24;
+int columns = 80;
 
 char* getpos(int r, int c) {
     char* p = buff;
@@ -42,7 +59,7 @@ void f() { fflush(stdout); }
 
 // http://wiki.bash-hackers.org/scripting/terminalcodes
 // http://paulbourke.net/dataformats/ascii/
-void clear() { printf("\x1b[2J\x1b[H%"); }
+void clear() { printf("\x1b[2J\x1b[H"); }
 void gotorc(int r, int c) { printf("\x1b[%d;%dH", r+1, c+1); }
 void inverse(int on) { printf(on ? "\x1b[7m" : "\x1b[m"); }
 void insert(char c) {
@@ -61,9 +78,11 @@ void insert(char c) {
 void restoreTerminalAndExit(int dummy) {
     clear();
     printf("imacs bids you farewell!\n");
+#ifndef OTA
     system("stty echo");
     system("stty sane");
     exit(0);
+#endif
 }
 
 void error(char* msg, char* arg) {
@@ -71,26 +90,58 @@ void error(char* msg, char* arg) {
     inverse(1);
     printf("%s %s\n", msg, arg);
     inverse(0);
+    #ifdef OTA
+    return;
+    #else
     exit(1);
+    #endif
     // TODO:
 }
 
-void readfile(char* filename) {
+int readfile(char* filename) {
+#ifdef OTA
+    //strcpy(buff, "a file\nfor\nyou to\nedit!\n");
+    strncpy((char*)buff, (char*)README_md, sizeof(README_md));
+    return strlen(buff)+1;
+#else
     FILE *f = fopen(filename, "r");
-    if (!f) return error("No such file: ", filename);
+    if (!f) return error("No such file: ", filename), -1;
     memset(buff, 0, buff_size);
     int len = fread(buff, buff_size-1, 1, f);
     fclose(f);
+    return len;
+#endif
 }
 
-void update() {
-//    int n = 100; while(n--) printf("\n");
-    clear(); printf("%s", buff); printf("\n\n\n"); f();
-    gotorc(row, col);
+void print_modeline(char* filename, int row, int col) {
+    gotorc(lines-2, 0);
+    inverse(1);
+    printf("-- imacs --**-- %-20s          L%d C%d (text) -------------------------------------", filename, row, col);
+    inverse(0);
+    f();
+}
+
+void update(char* filename, int row, int col, int scroll) {
+    clear(); // maybe can clear only edit area?
+
+    print_modeline(filename, row, col);
+
+    gotorc(0, 0);
+    // print visible text from rows [scroll, scroll+lines-3]
+    char* p = getpos(scroll, 0);
+    char* end = getpos(scroll+lines-3, columns);
+    while (p < end) putchar(*p++);
+
+    // set cursor
+    gotorc(row - scroll, col); f();
 }
 
 int getch()
 {
+#ifdef OTA
+    char c;
+    read(0, (void*)&c, 1);
+#else
     struct termios old;
     struct termios tmp;
 
@@ -102,24 +153,30 @@ int getch()
     int c = getchar();
 
     tcsetattr(STDIN_FILENO, TCSANOW, (const struct termios*) &old);
-
+#endif
     return c;
 }
 
 #define GETENV(name, default) ({ char* v = getenv(name); v ? atoi(v) : (default); })
 
 int main(int argc, char* argv[]) {
-    // init
+#ifndef OTA
+    filename = argc > 1 ? argv[1] : "README.md";
+
+    // system specific
     lines = GETENV("LINES", 24);
     columns = GETENV("COLUMNS", 80);
-
     signal(SIGINT, restoreTerminalAndExit);
+#endif
+    // init
+    buff_size = BUFF_SIZE;
+    buff = (char*) calloc(1, BUFF_SIZE);
+    buff_end = buff + buff_size;
 
-    filename = argc > 1 ? argv[1] : "README.md";
     if (filename) readfile(filename);
 
     // loop
-    update();
+    update(filename, row, col, scroll);
     int c;
     //while (read(0, &c, 1) > 0) { //esp?
     while ((c = getch()) > 0) {
@@ -145,20 +202,29 @@ int main(int argc, char* argv[]) {
             r = row; c = col; l = len;
             if (col > len) { col = 0; row++; }
             if (col < 0 && row) { row--; col = currentLineLength(); }
+            if (row < scroll) scroll--;
             if (col < 0) col = 0;
             if (row < 0) row = 0;
-            if (row > lines-3) row = lines-3;
+            if (scroll < 0) scroll = 0;
+            if (row-scroll > lines-3) scroll++;
             len = currentLineLength();
         } while (!(r == row && c == col && l == len));
-        if (col > len) { exit(42); col = 0; row++; len = -1; }
+        if (col > len) { col = 0; row++; len = -1; } // never get called?
 
-        update();
-        gotorc(lines-2, 0);
-        inverse(1);
-        printf("-- imacs --**-- %-20s          L%d C%d (text) -------------------------------------", filename, row, col, len);
-        inverse(0);
-        gotorc(row, col);
+        update(filename, row, col, scroll);
 
-        //printf("\m\m [%d]%c%c\n", c, *p, *p);
+        //printf("\m\m [%d]%c%c\n", c, *p, *p); // enable to read keyboard codes
     }
 }
+
+#ifdef OTA
+void user_init(void)
+{
+    sdk_uart_div_modify(0, UART_CLK_FREQ / 115200);
+    
+    main(0, NULL);
+
+    // for now run in a task, in order to allocate a bigger stack
+    //xTaskCreate(lispTask, (signed char *)"lispTask", 2048, NULL, 2, NULL);
+}
+#endif
