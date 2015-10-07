@@ -62,6 +62,9 @@ char* getpos(imacs_buffer* b, int r, int c) {
     return p < end ? p : (char*)end - 1;
 }
 
+// TODO: base on pos passed in walk back to newline then forward?
+// or walk both directions in two loops and add?
+// cols + count to \n!
 int currentLineLength(imacs_buffer* b) {
     char* start = getpos(b, b->row, 0);
     char* p = start;
@@ -76,21 +79,6 @@ void f() { fflush(stdout); }
 void clear() { printf("\x1b[2J\x1b[H"); }
 void gotorc(int r, int c) { printf("\x1b[%d;%dH", r+1, c+1); }
 void inverse(int on) { printf(on ? "\x1b[7m" : "\x1b[m"); }
-void insert(imacs_buffer* b, char c) {
-    // TODO: check not overflow buffer
-    // if (from > b->end) return error("Buffer full!", "");
-    char* from = getpos(b, b->row, b->col);
-    memmove(from + 1, from, strlen(from) + 1); // buff+len-from ?
-    *from = c;
-
-    // TODO: make function and use for ^F ?
-    // TODO: remove as it should be covered already...
-    b->col++;
-    if (b->col > b->columns) {
-        b->col = 0;
-        b->row++;
-    }
-}
 
 void restoreTerminalAndExit(int dummy) {
     clear();
@@ -148,9 +136,10 @@ void print_modeline(imacs_buffer* b) {
   #define putchar(c) ({ usleep(100); putchar(c); f(); }) 
 #endif
 
-void update(imacs_buffer* b) {
-    clear(); // maybe can clear only edit area?
+static void redraw(imacs_buffer* b) {
+    clear();
 
+    // print this first as dark it changes background and will flicker much
     print_modeline(b);
 
     gotorc(0, 0);
@@ -159,13 +148,32 @@ void update(imacs_buffer* b) {
     char* endVisible = getpos(b, b->scroll + b->lines - 3, b->columns);
     while (p < endVisible) putchar(*p++);
 
-    // set cursor
     gotorc(b->row - b->scroll, b->col);
-
     f();
 }
 
-int getch() {
+void update(imacs_buffer* b, int all) {
+    static imacs_buffer last;
+    static int last_len = -1;
+    
+    int len = strlen(b->buff);
+    if (all || // ctrl-L
+        len != last_len || b->filename != last.filename || b->buff != last.buff || // new file
+        b->lines != last.lines || b->columns != last.columns || // new terminal size
+        b->scroll != last.scroll) {
+        redraw(b);
+    }
+
+    // set cursor
+    gotorc(b->row - b->scroll, b->col);
+    f();
+
+    // remember last state to determine what to redraw
+    memcpy(&last, b, sizeof(last));
+    last_len = strlen(b->buff);
+}
+
+int getch_() {
 #ifdef OTA
     char c;
     read(0, (void*)&c, 1);
@@ -182,6 +190,16 @@ int getch() {
 
     tcsetattr(STDIN_FILENO, TCSANOW, (const struct termios*) &old);
 #endif
+    return c;
+}
+
+#define ESC 1032
+#define CTRL -64
+
+// returns 'a', 'A', CTRL + 'A', ESC + 'V', etc...
+int getch() {
+    int c = getch_();
+    if (c == 27) ESC + getch_();
     return c;
 }
 
@@ -212,28 +230,36 @@ int main(int argc, char* argv[]) {
     else // LOL
 #endif
     readfile(b, "README.md");
+    int screenfull = b->lines - 3;
 
     // loop
-    update(b);
+    update(b, 1);
     int c;
     //while (read(0, &c, 1) > 0) { //esp?
-    while ((c = getch()) > 0) {
+    while ((c = getch()) || 1) {
         int len = currentLineLength(b);
         char* p = getpos(b, b->row, b->col);
         if (0) ;
-        else if (c == 'P' - 64) b->row--;
-        else if (c == 'N' - 64) b->row++;
-        else if (c == 'F' - 64) b->col++;
-        else if (c == 'B' - 64) b->col--;
-        else if (c == 'A' - 64) b->col = 0;
-        else if (c == 'E' - 64) b->col = len;
-        else if (c == 10 || c == 'J' - 64) { insert(b, 'J' - 64); b->col = 0; b->row++; }
-        else if (c == 12) ; // redraw
-        else if (c == 'D' - 64) { memmove(p, p+1, strlen(p + 1) + 1); }
-        else if (c == 'H' - 64 && p > b->buff) { memmove(p-1, p, strlen(p) + 1); b->col--; }
-        else if (c == 'K' - 64) { char* from = p- b->col + len + (b->col == len); memmove(p, from, strlen(from) + 1); } 
-        else
-            insert(b, c);
+        else if (c == CTRL + 'P') b->row--;
+        else if (c == CTRL + 'N') b->row++;
+        else if (c == CTRL + 'F') b->col++;
+        else if (c == CTRL + 'B') b->col--;
+        else if (c == CTRL + 'A') b->col = 0;
+        else if (c == CTRL + 'E') b->col = len;
+        else if (c == CTRL + 'V') { b->row += screenfull; b->scroll += screenfull; }
+        else if (c == ESC  + 'V') { b->row -= screenfull; b->scroll -= screenfull; }
+        else if (c == CTRL + 'L') update(b, 1);
+        // modifiers
+        #define MOVE(toRel, fromRel) memmove(p + (toRel), p + (fromRel), strlen(p + (fromRel)) + 1)
+        else if (c == CTRL + 'D') MOVE(0, 1);
+        else if (c == CTRL + 'H' && p > b->buff) { MOVE(-1, 0); b->col--; }
+        else if (c == CTRL + 'K') MOVE(0, len - b->col + (b->col == len));
+        // inserts
+        else if (c == 10 || c == CTRL + 'J') { memmove(p + 1, p, strlen(p) + 1); *p = '\n'; b->col = 0; b->row++; }
+        else { MOVE(1, 0); *p = c; b->col++; }
+        #undef MOVE
+        
+        len = currentLineLength(b);
 
         // fix out of bounds relative to content and screen, loop till no change
         int r, c, l;
@@ -250,7 +276,7 @@ int main(int argc, char* argv[]) {
         } while (!(r == b->row && c == b->col && l == len));
         if (b->col > len) { b->col = 0; b->row++; len = -1; } // never get called?
 
-        update(b);
+        update(b, 0);
 
         //printf("\m\m [%d]%c%c\n", c, *p, *p); // enable to read keyboard codes
     }
