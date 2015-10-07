@@ -117,7 +117,7 @@ void error(char* msg, char* arg) {
 int readfile(imacs_buffer* b, char* filename) {
 #ifdef OTA
     strncpy((char*)b->buff, (char*)README_md, sizeof(README_md));
-    int len = strlen(buff) + 1;
+    int len = strlen(b->buff) + 1;
 #else
     if (!filename) return -1;
     FILE *f = fopen(filename, "r");
@@ -140,6 +140,13 @@ void print_modeline(imacs_buffer* b) {
     inverse(0);
     f();
 }
+
+#ifndef OTA
+  #include <unistd.h>
+
+  // simulate slow terminal!
+  #define putchar(c) ({ usleep(100); putchar(c); f(); }) 
+#endif
 
 void update(imacs_buffer* b) {
     clear(); // maybe can clear only edit area?
@@ -181,9 +188,12 @@ int getch() {
 #define GETENV(name, default) ({ char* v = getenv(name); v ? atoi(v) : (default); })
 
 void imacs_init(imacs_buffer* b) {
+    memset(b, 0, sizeof(*b));
     b->size = BUFF_SIZE;
     b->buff = (char*) calloc(1, BUFF_SIZE);
     b->end = b->buff + b->size;
+    b->lines = 24;
+    b->columns = 80;
 
 #ifndef OTA
     // system specific
