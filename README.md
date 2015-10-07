@@ -1,5 +1,8 @@
 # imacs
 
+Have a relase demo of "emacs" for esp8266
+- https://github.com/yesco/imacs/releases
+
 Help text, loaded by default
 
       imacs - possibly the worlds smallest emacs clone!
