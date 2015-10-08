@@ -233,9 +233,16 @@ void update(imacs_buffer* b, int why) {
         b->lines != last.lines || b->columns != last.columns || // new terminal size
         b->scroll != last.scroll || // all changed by scrolling
         (why < -10 && len != last_len) || // edit changed massively stuff
-        why == -1 || // ^K deleted row
         0) {
         redraw(b);
+    } else {
+        // redraw current line at least
+        gotorc(b->row - b->scroll, 0);
+        clearend();
+        char* p = getpos(b, b->row, 0);
+        // TODO: too long line overflow, handle somewhere somehow...
+        // TODO: make function use here and in redraw()
+        while (*p && *p != '\n' && p < b->end) putchar(*p++);
     }
 
     // set cursor
@@ -347,6 +354,7 @@ int main(int argc, char* argv[]) {
     while ((c = getch()) || 1) {
         int why = 0;
         int len = currentLineLength(b);
+        int lines = countLines(b);
         char* p = getpos(b, b->row, b->col);
         if (0) ;
         else if (c == CTRL + 'P') b->row--;
@@ -359,18 +367,21 @@ int main(int argc, char* argv[]) {
         else if (c == ESC  + 'V') { b->row -= screenfull; b->scroll -= screenfull; }
         else if (c == ESC  + '<') { b->row = 0; b->col = 0; b->scroll = 0; }
         else if (c == ESC  + '>') { b->row = countLines(b); b->scroll = (b->row / screenfull) * screenfull; }
-        else if (c == CTRL + 'L') update(b, 0);
+        else if (c == CTRL + 'L') why = 1;
         // modifiers
         #define MOVE(toRel, fromRel) ({ memmove(p + (toRel), p + (fromRel), strlen(p + (fromRel)) + 1); b->dirty++; })
+        // TODO: delete newline need redraw rest..., this is common for ALL!!!!
         else if (c == CTRL + 'D') MOVE(0, 1);
         else if (c == CTRL + 'H' && p > b->buff) { MOVE(-1, 0); b->col--; }
-        else if (c == CTRL + 'K') { MOVE(0, len - b->col + (b->col == len)); clearend(); why = (b->col == len); }
+        else if (c == CTRL + 'K') { MOVE(0, len - b->col + (b->col == len)); clearend(); }
         // inserts
         else if (c == 10 || c == CTRL + 'J') { memmove(p + 1, p, strlen(p) + 1); *p = '\n'; b->col = 0; b->row++; }
         else { MOVE(1, 0); *p = c; b->col++; }
         #undef MOVE
         
         fix(b);
+
+        if (lines != countLines(b)) why = 1;
 
         update(b, why);
 
