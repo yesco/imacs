@@ -73,13 +73,76 @@ void f() { fflush(stdout); }
 // vt100 codes
 // http://wiki.bash-hackers.org/scripting/terminalcodes
 // http://paulbourke.net/dataformats/ascii/
+//
+// Scrolling Functions:
+//
+// *  ESC [ pt ; pb r   set scroll region
+// *  ESC [ ? 6 h       turn on region - origin mode
+// *  ESC [ ? 6 l       turn off region - full screen mode
+
+//DECSTBM – Set Top and Bottom Margins (DEC Private)
+
+// ESC [ Pn; Pn r    
+//
+// This sequence sets the top and bottom margins to define the
+// scrolling region. The first parameter is the line number of the first
+// line in the scrolling region; the second parameter is the line number
+// of the bottom line in the scrolling region. Default is the entire
+// screen (no margins). The minimum size of the scrolling region allowed
+// is two lines, i.e., the top margin must be less than the bottom
+// margin. The cursor is placed in the home position (see Origin Mode
+// DECOM).
+
+// http://www.termsys.demon.co.uk/vtansi.htm#scroll
+// Scrolling
+//
+// Scroll Screen: <ESC> [ r
+//   Enable scrolling for entire display.
+// Scroll Screen: <ESC> [ {start} ; {end} r
+//   Enable scrolling from row {start} to row {end}.
+// Scroll Down: <ESC> D
+//   Scroll display down one line.
+// Scroll Up: <ESC> M
+//   Scroll display up one line.
+
+//                
+//         Cursor Functions:
+//
+// *  ESC [ pn A        cursor up pn times - stop at top
+// *  ESC [ pn B        cursor down pn times - stop at bottom
+// *  ESC [ pn C        cursor right pn times - stop at far right
+// *  ESC [ pn D        cursor left pn times - stop at far left
+//          *  ESC [ pl ; pc H   set cursor position - pl Line, pc Column
+// *  ESC [ H           set cursor home
+//          *  ESC [ pl ; pc f   set cursor position - pl Line, pc Column
+// *  ESC [ f           set cursor home
+//          *  ESC D             cursor down - at bottom of region, scroll up
+//          *  ESC M             cursor up - at top of region, scroll down
+//          *  ESC E             next line (same as CR LF)
+//          *  ESC 7             save cursor position(char attr,char set,org)
+//          *  ESC 8             restore position (char attr,char set,origin)
+//
+// Character Attributes:
+// *  ESC [ m           turn off attributes - normal video
+// *  ESC [ 0 m         turn off attributes - normal video
+// *  ESC [ 4 m         turn on underline mode 
+// *  ESC [ 7 m         turn on inverse video mode
+// *  ESC [ 1 m         highlight
+// *  ESC [ 5 m         blink
+//
 void clear() { printf("\x1b[2J\x1b[H"); }
 void clearend() { printf("\x1b[K"); }
+void cleareos() { printf("\x1b[J'"); } // TODO: add redraw rest of screen (from pointer)
 void gotorc(int r, int c) { printf("\x1b[%d;%dH", r+1, c+1); }
 void inverse(int on) { printf(on ? "\x1b[7m" : "\x1b[m"); }
+void fgcolor(int c) { printf("\x1b[[3%dm", c); } // 0black 1red 2green 3yellow 4blue 5magnenta 6cyan 7white 9default
+void bgcolor(int c) { printf("\x1b[[4%dm", c); } // 0black 1red 2green 3yellow 4blue 5magnenta 6cyan 7white 9default
+void savescreen() { printf("\x21b[?47h"); }
+void restorescreen() { printf("\x21b[?47l"); }
 
 void restoreTerminalAndExit(int dummy) {
     clear();
+    restorescreen();
     printf("imacs bids you farewell!\n");
 #ifndef OTA
     system("stty echo");
@@ -253,6 +316,17 @@ void fix(imacs_buffer* b) {
     if (b->col > len) { b->col = 0; b->row++; len = -1; } // never get called?
 }
 
+// '[A': 'Up',
+// '[B': 'Down',
+// '[C': 'Right',
+// '[D': 'Left',
+// '[F': 'End',
+// '[H': 'Pos1',
+// '[2~': 'Ins',
+// '[3~': 'Del',
+// '[5~': 'PgUp',
+// '[6~': 'PdDown',
+
 int main(int argc, char* argv[]) {
     imacs_buffer* b = alloca(sizeof(imacs_buffer));
     imacs_init(b);
@@ -264,8 +338,10 @@ int main(int argc, char* argv[]) {
     readfile(b, "README.md");
     int screenfull = b->lines - 3;
 
-    // loop
+    savescreen();
     update(b, 1);
+    
+    // loop
     int c;
     //while (read(0, &c, 1) > 0) { //esp?
     while ((c = getch()) || 1) {
