@@ -43,18 +43,6 @@ typedef struct {
     int dirty;
 } imacs_buffer;
 
-imacs_buffer main_buff = {
-    .size = BUFF_SIZE,
-    .buff = NULL,
-    .end = NULL,
-    .filename =  "README.md",
-    .row = 0,
-    .col = 0,
-    .scroll = 0,
-    .lines = 24,
-    .columns = 80,
-};
-
 char* getpos(imacs_buffer* b, int r, int c) {
     char* p = b->buff;
     char* end = b->end;
@@ -82,9 +70,11 @@ int currentLineLength(imacs_buffer* b) {
 
 void f() { fflush(stdout); }
 
+// vt100 codes
 // http://wiki.bash-hackers.org/scripting/terminalcodes
 // http://paulbourke.net/dataformats/ascii/
 void clear() { printf("\x1b[2J\x1b[H"); }
+void clearend() { printf("\x1b[K"); }
 void gotorc(int r, int c) { printf("\x1b[%d;%dH", r+1, c+1); }
 void inverse(int on) { printf(on ? "\x1b[7m" : "\x1b[m"); }
 
@@ -170,15 +160,18 @@ static void redraw(imacs_buffer* b) {
     f();
 }
 
-void update(imacs_buffer* b, int all) {
+void update(imacs_buffer* b, int why) {
     static imacs_buffer last;
     static int last_len = -1;
     
     int len = strlen(b->buff);
-    if (all || // ctrl-L
-        len != last_len || b->filename != last.filename || b->buff != last.buff || // new file
+    if (why > 0 || // ctrl-L
+        b->filename != last.filename || b->buff != last.buff || // new file
         b->lines != last.lines || b->columns != last.columns || // new terminal size
-        b->scroll != last.scroll) {
+        b->scroll != last.scroll || // all changed by scrolling
+        (why < -10 && len != last_len) || // edit changed massively stuff
+        why == -1 || // ^K deleted row
+        0) {
         redraw(b);
     }
 
@@ -276,6 +269,7 @@ int main(int argc, char* argv[]) {
     int c;
     //while (read(0, &c, 1) > 0) { //esp?
     while ((c = getch()) || 1) {
+        int why = 0;
         int len = currentLineLength(b);
         char* p = getpos(b, b->row, b->col);
         if (0) ;
@@ -289,12 +283,12 @@ int main(int argc, char* argv[]) {
         else if (c == ESC  + 'V') { b->row -= screenfull; b->scroll -= screenfull; }
         else if (c == ESC  + '<') { b->row = 0; b->col = 0; b->scroll = 0; }
         else if (c == ESC  + '>') { b->row = countLines(b); b->scroll = (b->row / screenfull) * screenfull; }
-        else if (c == CTRL + 'L') update(b, 1);
+        else if (c == CTRL + 'L') update(b, 0);
         // modifiers
         #define MOVE(toRel, fromRel) ({ memmove(p + (toRel), p + (fromRel), strlen(p + (fromRel)) + 1); b->dirty++; })
         else if (c == CTRL + 'D') MOVE(0, 1);
         else if (c == CTRL + 'H' && p > b->buff) { MOVE(-1, 0); b->col--; }
-        else if (c == CTRL + 'K') MOVE(0, len - b->col + (b->col == len));
+        else if (c == CTRL + 'K') { MOVE(0, len - b->col + (b->col == len)); clearend(); why = (b->col == len); }
         // inserts
         else if (c == 10 || c == CTRL + 'J') { memmove(p + 1, p, strlen(p) + 1); *p = '\n'; b->col = 0; b->row++; }
         else { MOVE(1, 0); *p = c; b->col++; }
@@ -302,7 +296,7 @@ int main(int argc, char* argv[]) {
         
         fix(b);
 
-        update(b, 0);
+        update(b, why);
 
         //printf("  [%c %d %d %d] ", c, c, CTRL + 'V', ESC + 'V');
     }
