@@ -15,8 +15,14 @@ Help text, loaded by default
 
       Help
       ====
-      lines: ^A, ^P, ^N, ^K, ^E
-      chars: ^B, ^F, ^D, DEL/^H
+      char    forward: ^B      back: ^F
+      delete  forward: DEL     back: ^D
+      pages      down: ^V        up: ESC V
+      file        top: ESC <    end: ESC >
+      lines      prev: ^P      next: ^N
+      lines beginning: ^A       end: ^E
+
+      delete line after cursor: ^K
       exit: ^C
       redraw: ^L
 

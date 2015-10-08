@@ -40,6 +40,7 @@ typedef struct {
     
     int lines;
     int columns;
+    int dirty;
 } imacs_buffer;
 
 imacs_buffer main_buff = {
@@ -60,6 +61,13 @@ char* getpos(imacs_buffer* b, int r, int c) {
     while (r > 0 && *p && p < end) if (*p++ == '\n') r--;
     while (c > 0 && *p && p < end && *p++ != '\n') c--;
     return p < end ? p : (char*)end - 1;
+}
+
+static int countLines(imacs_buffer *b) {
+    char* p = b->buff;
+    int c = 0;
+    while (*p && p < b->end) if (*p++ == '\n') c++;
+    return c;
 }
 
 // TODO: base on pos passed in walk back to newline then forward?
@@ -120,11 +128,21 @@ int readfile(imacs_buffer* b, char* filename) {
     return len;
 }
 
+// http://www2.lib.uchicago.edu/keith/tcl-course/emacs-tutorial.html
+// Modeline shows:
+
+// - state: modified (**), unmodified (--), or read-only (%%)
+// - filename or *scratch*
+// - "(mode)"
+// - All/Top/Bot/33%
 void print_modeline(imacs_buffer* b) {
     gotorc(b->lines - 2, 0);
     inverse(1);
-    printf("-- imacs --**-- %-20s L%d C%d (text) --------------------------",
-           b->filename, b->row, b->col);
+    int chars = 
+        printf("---%s-- %-20s L%d C%d (text) --------------------------",
+               (b->dirty ? "**" : "--"),
+               b->filename, b->row, b->col);
+    while (++chars < b->columns) putchar('-');
     inverse(0);
     f();
 }
@@ -193,13 +211,15 @@ int getch_() {
     return c;
 }
 
-#define ESC 1032
+#define ESC 1000
 #define CTRL -64
+
+#define UPCASE(c) ({ int _c = (c); _c >= 'a' ? _c - 32 : _c; })
 
 // returns 'a', 'A', CTRL + 'A', ESC + 'V', etc...
 int getch() {
     int c = getch_();
-    if (c == 27) ESC + getch_();
+    if (c == 27) return ESC + UPCASE(getch_());
     return c;
 }
 
@@ -219,6 +239,25 @@ void imacs_init(imacs_buffer* b) {
     b->columns = GETENV("COLUMNS", 80);
     signal(SIGINT, restoreTerminalAndExit);
 #endif
+}
+
+void fix(imacs_buffer* b) {
+    int len = currentLineLength(b);
+
+    // fix out of bounds relative to content and screen, loop till no change
+    int r, c, l;
+    do {
+        r = b->row; c = b->col; l = len;
+        if (b->col > len) { b->col = 0; b->row++; }
+        if (b->col < 0 && b->row) { b->row--; b->col = currentLineLength(b); }
+        if (b->row < b->scroll) b->scroll--;
+        if (b->col < 0) b->col = 0;
+        if (b->row < 0) b->row = 0;
+        if (b->scroll < 0) b->scroll = 0;
+        if (b->row - b->scroll > b->lines - 3) b->scroll++;
+        len = currentLineLength(b);
+    } while (!(r == b->row && c == b->col && l == len));
+    if (b->col > len) { b->col = 0; b->row++; len = -1; } // never get called?
 }
 
 int main(int argc, char* argv[]) {
@@ -248,9 +287,11 @@ int main(int argc, char* argv[]) {
         else if (c == CTRL + 'E') b->col = len;
         else if (c == CTRL + 'V') { b->row += screenfull; b->scroll += screenfull; }
         else if (c == ESC  + 'V') { b->row -= screenfull; b->scroll -= screenfull; }
+        else if (c == ESC  + '<') { b->row = 0; b->col = 0; b->scroll = 0; }
+        else if (c == ESC  + '>') { b->row = countLines(b); b->scroll = (b->row / screenfull) * screenfull; }
         else if (c == CTRL + 'L') update(b, 1);
         // modifiers
-        #define MOVE(toRel, fromRel) memmove(p + (toRel), p + (fromRel), strlen(p + (fromRel)) + 1)
+        #define MOVE(toRel, fromRel) ({ memmove(p + (toRel), p + (fromRel), strlen(p + (fromRel)) + 1); b->dirty++; })
         else if (c == CTRL + 'D') MOVE(0, 1);
         else if (c == CTRL + 'H' && p > b->buff) { MOVE(-1, 0); b->col--; }
         else if (c == CTRL + 'K') MOVE(0, len - b->col + (b->col == len));
@@ -259,26 +300,11 @@ int main(int argc, char* argv[]) {
         else { MOVE(1, 0); *p = c; b->col++; }
         #undef MOVE
         
-        len = currentLineLength(b);
-
-        // fix out of bounds relative to content and screen, loop till no change
-        int r, c, l;
-        do {
-            r = b->row; c = b->col; l = len;
-            if (b->col > len) { b->col = 0; b->row++; }
-            if (b->col < 0 && b->row) { b->row--; b->col = currentLineLength(b); }
-            if (b->row < b->scroll) b->scroll--;
-            if (b->col < 0) b->col = 0;
-            if (b->row < 0) b->row = 0;
-            if (b->scroll < 0) b->scroll = 0;
-            if (b->row - b->scroll > b->lines - 3) b->scroll++;
-            len = currentLineLength(b);
-        } while (!(r == b->row && c == b->col && l == len));
-        if (b->col > len) { b->col = 0; b->row++; len = -1; } // never get called?
+        fix(b);
 
         update(b, 0);
 
-        //printf("\m\m [%d]%c%c\n", c, *p, *p); // enable to read keyboard codes
+        //printf("  [%c %d %d %d] ", c, c, CTRL + 'V', ESC + 'V');
     }
 }
 
