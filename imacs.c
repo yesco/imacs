@@ -23,7 +23,7 @@
 // TODO: refactor to create a struct with all the states of a buffer?
 
 #ifdef OTA
-  #define BUFF_SIZE (2048)
+  #define BUFF_SIZE (4096)
 #else
   #define BUFF_SIZE (1024*24)
 #endif
@@ -137,8 +137,11 @@ void gotorc(int r, int c) { printf("\x1b[%d;%dH", r+1, c+1); }
 void inverse(int on) { printf(on ? "\x1b[7m" : "\x1b[m"); }
 void fgcolor(int c) { printf("\x1b[[3%dm", c); } // 0black 1red 2green 3yellow 4blue 5magnenta 6cyan 7white 9default
 void bgcolor(int c) { printf("\x1b[[4%dm", c); } // 0black 1red 2green 3yellow 4blue 5magnenta 6cyan 7white 9default
-void savescreen() { printf("\x21b[?47h"); }
-void restorescreen() { printf("\x21b[?47l"); }
+void savescreen() { printf("\x1b[?47h"); }
+void restorescreen() { printf("\x1b[?47l"); }
+// can use insert characters/line from
+// - http://vt100.net/docs/vt102-ug/chapter5.html
+void insertmode(int on) { printf("\x1b[4%c", on ? 'h' : 'l'); }
 
 void restoreTerminalAndExit(int dummy) {
     clear();
@@ -151,16 +154,10 @@ void restoreTerminalAndExit(int dummy) {
 #endif
 }
 
-void error(char* msg, char* arg) {
-    clear(); f();
-    inverse(1);
-    printf("%s %s\n", msg, arg);
-    inverse(0);
-    #ifdef OTA
+void error(imacs_buffer* b, char* msg, char* arg) {
+    gotorc(b->lines-1, 0);
+    printf("%s%s\n", msg, arg); f();
     return;
-    #else
-    exit(1);
-    #endif
 }
 
 int readfile(imacs_buffer* b, char* filename) {
@@ -170,7 +167,7 @@ int readfile(imacs_buffer* b, char* filename) {
 #else
     if (!filename) return -1;
     FILE *f = fopen(filename, "r");
-    if (!f) return error("No such file: ", filename), -1;
+    if (!f) return error(b, "No such file: ", filename), -1;
     memset(b->buff, 0, b->size);
     int len = fread(b->buff, b->size - 1, 1, f);
     fclose(f);
@@ -235,8 +232,10 @@ void update(imacs_buffer* b, int why) {
         (why < -10 && len != last_len) || // edit changed massively stuff
         0) {
         redraw(b);
+    } if (why < 0) {
+        // none, already handled
     } else {
-        // redraw current line at least
+        // redraw current line at least, default
         gotorc(b->row - b->scroll, 0);
         clearend();
         char* p = getpos(b, b->row, 0);
@@ -323,6 +322,12 @@ void fix(imacs_buffer* b) {
     if (b->col > len) { b->col = 0; b->row++; len = -1; } // never get called?
 }
 
+void error_key(imacs_buffer* b, int c) {
+    char key[2] = {0};
+    key[0] = (c < 32) ? c + 64 : c - ESC;
+    error(b, (c < 32) ? "Key not implemented: ^" : "Key not implemented: ESC ", key);
+}
+
 // '[A': 'Up',
 // '[B': 'Down',
 // '[C': 'Right',
@@ -370,13 +375,15 @@ int main(int argc, char* argv[]) {
         else if (c == CTRL + 'L') why = 1;
         // modifiers
         #define MOVE(toRel, fromRel) ({ memmove(p + (toRel), p + (fromRel), strlen(p + (fromRel)) + 1); b->dirty++; })
-        // TODO: delete newline need redraw rest..., this is common for ALL!!!!
         else if (c == CTRL + 'D') MOVE(0, 1);
         else if (c == CTRL + 'H' && p > b->buff) { MOVE(-1, 0); b->col--; }
         else if (c == CTRL + 'K') { MOVE(0, len - b->col + (b->col == len)); clearend(); }
         // inserts
-        else if (c == 10 || c == CTRL + 'J') { memmove(p + 1, p, strlen(p) + 1); *p = '\n'; b->col = 0; b->row++; }
-        else { MOVE(1, 0); *p = c; b->col++; }
+        else if (c == CTRL + 'O') { MOVE(1, 0); *p = '\n'; }
+        else if (c == 10 || c == 13 || c == CTRL + 'J') { MOVE(1, 0); *p = '\n'; b->col = 0; b->row++; }
+
+        else if (c < 32 || c > ESC) error_key(b, c);
+        else { MOVE(1, 0); *p = c; b->col++; insertmode(1); putchar(c); insertmode(0); why = -1; }
         #undef MOVE
         
         fix(b);

@@ -21,6 +21,7 @@ Help text, loaded by default
       file        top: ESC <    end: ESC >
       lines      prev: ^P      next: ^N
       lines beginning: ^A       end: ^E
+      newline   after: ^O    before: RET
 
       delete line after cursor: ^K
       exit: ^C
