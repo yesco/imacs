@@ -273,7 +273,8 @@ int getch_() {
     return c;
 }
 
-#define ESC 1000
+#define ESC 96 // haha! ESC A or M-A!
+#define META (ESC+'A'-1)
 #define CTRL -64
 
 #define UPCASE(c) ({ int _c = (c); _c >= 'a' ? _c - 32 : _c; })
@@ -382,7 +383,8 @@ int main(int argc, char* argv[]) {
         else if (c == CTRL + 'O') { MOVE(1, 0); *p = '\n'; }
         else if (c == 10 || c == 13 || c == CTRL + 'J') { MOVE(1, 0); *p = '\n'; b->col = 0; b->row++; }
 
-        else if (c < 32 || c > ESC) error_key(b, c);
+        else if (c == 195) 3; // prefix for M-A..
+        else if (c < 32 || c > META) error_key(b, c); // not CTRL / ESC / META
         else { MOVE(1, 0); *p = c; b->col++; insertmode(1); putchar(c); insertmode(0); why = -1; }
         #undef MOVE
         
@@ -392,7 +394,8 @@ int main(int argc, char* argv[]) {
 
         update(b, why);
 
-        //printf("  [%c %d %d %d] ", c, c, CTRL + 'V', ESC + 'V');
+        // uncomment to read keys...
+        // do {  printf("  [%c %d %d %d] ", c, c, CTRL + 'V', ESC + 'V'); } while (c=getch()); }
     }
 }
 
