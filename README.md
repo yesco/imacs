@@ -23,6 +23,8 @@ Help text, loaded by default
       lines beginning: ^A       end: ^E
       newline   after: ^O    before: RET
 
+      TAB indents cleverly, newline too
+
       delete line after cursor: ^K
       exit: ^C
       redraw: ^L
@@ -35,8 +37,8 @@ Help text, loaded by default
       - can't handle files with longer lines than terminal width
       - tabs... get's funny
       - vt100 only
-      - each keystroke rewrite the screen!
-      - when you move till after the file end, it gets funny
+      - some things rewrite whole screen!
+      - when you move till after the file end, it gets funny (TOFIX)
       - big files should mess it up
 
       Why
