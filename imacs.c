@@ -136,6 +136,8 @@ void clear() { printf("\x1b[2J\x1b[H"); }
 static void clearend() { printf("\x1b[K"); }
 static void cleareos() { printf("\x1b[J'"); } // TODO: add redraw rest of screen (from pointer)
 static void gotorc(int r, int c) { printf("\x1b[%d;%dH", r+1, c+1); }
+static void cursoroff() { printf("\x1b[?25l"); }
+static void cursoron() { printf("\x1b[?25h"); }
 static void inverse(int on) { printf(on ? "\x1b[7m" : "\x1b[m"); }
 static void fgcolor(int c) { printf("\x1b[[3%dm", c); } // 0black 1red 2green 3yellow 4blue 5magnenta 6cyan 7white 9default
 static void bgcolor(int c) { printf("\x1b[[4%dm", c); } // 0black 1red 2green 3yellow 4blue 5magnenta 6cyan 7white 9default
@@ -192,13 +194,28 @@ static int readfile(imacs_buffer* b, char* filename) {
 static void print_modeline(imacs_buffer* b) {
     gotorc(b->lines - 2, 0);
     inverse(1);
+    int len = strlen(b->buff) + 1;
     int chars = 
-        printf("---%s-- %-20s L%d C%d (text) --------------------------",
+        printf("---%s-- %-20s L%d C%d (text) --%d bytes (%d free)-------",
                (b->dirty ? "**" : "--"),
-               b->filename, b->row, b->col);
+               b->filename, b->row, b->col,
+               len, b->size - len);
     while (++chars < b->columns) putchar('-');
     inverse(0);
     f();
+
+    /// resize buffer if needed
+    if (b->size - len < 100) {
+        char* p = b->buff;
+        int sz = b->size * 130 / 100;
+        b->buff = realloc(b->buff, sz);
+        if (!b->buff) {
+            error(b, "Can't reallocate bigger buffer! PANIC!!!", "");
+            b->buff = p;
+        } else {
+            b->size = sz;
+        }
+    }
 }
 
 #ifndef OTA
@@ -209,6 +226,7 @@ static void print_modeline(imacs_buffer* b) {
 #endif
 
 static void redraw(imacs_buffer* b) {
+    cursoroff();
     clear();
 
     // print this first as dark it changes background and will flicker much
@@ -221,6 +239,7 @@ static void redraw(imacs_buffer* b) {
     while (p < endVisible) putchar(*p++);
 
     gotorc(b->row - b->scroll, b->col);
+    cursoron();
     f();
 }
 
@@ -228,6 +247,7 @@ static void update(imacs_buffer* b, int why) {
     static imacs_buffer last;
     static int last_len = -1;
     
+    cursoroff();
     int len = strlen(b->buff);
     if (why > 0 || // ctrl-L
         b->filename != last.filename || b->buff != last.buff || // new file
@@ -247,9 +267,11 @@ static void update(imacs_buffer* b, int why) {
         // TODO: make function use here and in redraw()
         while (*p && *p != '\n' && p < b->end) putchar(*p++);
     }
+    print_modeline(b);
 
     // set cursor
     gotorc(b->row - b->scroll, b->col);
+    cursoron();
     f();
 
     // remember last state to determine what to redraw
@@ -387,11 +409,11 @@ int main(int argc, char* argv[]) {
     // loop
     int c;
     while ((c = getch()) || 1) {
+        int enter = (c == 13 || c == 99 || c == CTRL + 'J');
         int why = 0;
         int len = currentLineLength(b);
         int lines = countLines(b);
         char* p = getpos(b, b->row, b->col);
-        int enter = (c == 13 || c == 99 || c == CTRL + 'J');
         if (0) ;
         else if (c == CTRL + 'P') b->row--;
         else if (c == CTRL + 'N') b->row++;
