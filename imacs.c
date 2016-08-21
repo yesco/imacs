@@ -22,10 +22,12 @@
 
 // TODO: refactor to create a struct with all the states of a buffer?
 
-#ifdef OTA
-  #define BUFF_SIZE (4096)
-#else
-  #define BUFF_SIZE (1024*24)
+#ifndef BUFF_SIZE
+  #ifdef OTA
+    #define BUFF_SIZE (4096)
+  #else
+    #define BUFF_SIZE (1024*24)
+  #endif
 #endif
 
 typedef struct {
@@ -160,6 +162,7 @@ static void error(imacs_buffer* b, char* msg, char* arg) {
     return;
 }
 
+#ifndef NO_MAIN
 static int readfile(imacs_buffer* b, char* filename) {
 #ifdef OTA
     strncpy((char*)b->buff, (char*)README_md, sizeof(README_md));
@@ -177,6 +180,7 @@ static int readfile(imacs_buffer* b, char* filename) {
     b->filename = filename;
     return len;
 }
+#endif
 
 // http://www2.lib.uchicago.edu/keith/tcl-course/emacs-tutorial.html
 // Modeline shows:
@@ -255,8 +259,18 @@ static void update(imacs_buffer* b, int why) {
 
 static int getch_() {
 #ifdef OTA
+    // TODO: fix....
+    return mygetchar();
     char c;
-    read(0, (void*)&c, 1);
+    int r = 0;
+    int lastr = r; char lastc = c;
+    while ((r = read(0, (void*)&c, 1)) <= 0) {
+        if (lastr != r || lastc != c) {
+            printf("[%d %c]", r, c); f();
+        }
+        lastr = r; lastc = c;
+    }
+    printf("==========>[%d : %c]", r, c); f();
 #else
     struct termios old;
     struct termios tmp;
@@ -372,7 +386,6 @@ int main(int argc, char* argv[]) {
     
     // loop
     int c;
-    //while (read(0, &c, 1) > 0) { //esp?
     while ((c = getch()) || 1) {
         int why = 0;
         int len = currentLineLength(b);
@@ -417,7 +430,7 @@ int main(int argc, char* argv[]) {
         else if (c == XTRA + CTRL + 'Z') break; // suspend
         else if (c == XTRA + CTRL + 'F') break; // find-file
         //
-        else if (c == 195) 3; // prefix for M-A..
+        else if (c == 195); // prefix for M-A..
         else if (c < 32 || c > META) error_key(b, c); // not CTRL / ESC / META
         else { INS(c); b->col++; insertmode(1); putchar(c); insertmode(0); why = -1; }
         #undef MOVE
@@ -435,6 +448,7 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
+#ifndef NO_MAIN
 #ifdef OTA
 void user_init(void)
 {
@@ -445,4 +459,5 @@ void user_init(void)
     // for now run in a task, in order to allocate a bigger stack
     //xTaskCreate(lispTask, (signed char *)"lispTask", 2048, NULL, 2, NULL);
 }
+#endif
 #endif
