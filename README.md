@@ -40,6 +40,7 @@ Help text, loaded by default
       - some things rewrite whole screen!
       - when you move till after the file end, it gets funny (TOFIX)
       - big files should mess it up
+      - down/up to line that isn't that wide gets little funny (TOFIX)
 
       Why
       ===
