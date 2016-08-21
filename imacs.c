@@ -61,14 +61,14 @@ static int countLines(imacs_buffer *b) {
 // TODO: base on pos passed in walk back to newline then forward?
 // or walk both directions in two loops and add?
 // cols + count to \n!
-int currentLineLength(imacs_buffer* b) {
+static int currentLineLength(imacs_buffer* b) {
     char* start = getpos(b, b->row, 0);
     char* p = start;
     while (*p != '\n' && *p && p < b->end) p++;
     return (p - start);
 }
 
-void f() { fflush(stdout); }
+static void f() { fflush(stdout); }
 
 // vt100 codes
 // http://wiki.bash-hackers.org/scripting/terminalcodes
@@ -131,36 +131,36 @@ void f() { fflush(stdout); }
 // *  ESC [ 5 m         blink
 //
 void clear() { printf("\x1b[2J\x1b[H"); }
-void clearend() { printf("\x1b[K"); }
-void cleareos() { printf("\x1b[J'"); } // TODO: add redraw rest of screen (from pointer)
-void gotorc(int r, int c) { printf("\x1b[%d;%dH", r+1, c+1); }
-void inverse(int on) { printf(on ? "\x1b[7m" : "\x1b[m"); }
-void fgcolor(int c) { printf("\x1b[[3%dm", c); } // 0black 1red 2green 3yellow 4blue 5magnenta 6cyan 7white 9default
-void bgcolor(int c) { printf("\x1b[[4%dm", c); } // 0black 1red 2green 3yellow 4blue 5magnenta 6cyan 7white 9default
-void savescreen() { printf("\x1b[?47h"); }
-void restorescreen() { printf("\x1b[?47l"); }
+static void clearend() { printf("\x1b[K"); }
+static void cleareos() { printf("\x1b[J'"); } // TODO: add redraw rest of screen (from pointer)
+static void gotorc(int r, int c) { printf("\x1b[%d;%dH", r+1, c+1); }
+static void inverse(int on) { printf(on ? "\x1b[7m" : "\x1b[m"); }
+static void fgcolor(int c) { printf("\x1b[[3%dm", c); } // 0black 1red 2green 3yellow 4blue 5magnenta 6cyan 7white 9default
+static void bgcolor(int c) { printf("\x1b[[4%dm", c); } // 0black 1red 2green 3yellow 4blue 5magnenta 6cyan 7white 9default
+static void savescreen() { printf("\x1b[?47h"); }
+static void restorescreen() { printf("\x1b[?47l"); }
 // can use insert characters/line from
 // - http://vt100.net/docs/vt102-ug/chapter5.html
-void insertmode(int on) { printf("\x1b[4%c", on ? 'h' : 'l'); }
+static void insertmode(int on) { printf("\x1b[4%c", on ? 'h' : 'l'); }
 
-void restoreTerminalAndExit(int dummy) {
+static void restoreTerminalAndExit(int dummy) {
     clear();
     restorescreen();
     printf("imacs bids you farewell!\n");
 #ifndef OTA
-    system("stty echo");
-    system("stty sane");
+    int ignore = system("stty echo");
+    ignore += system("stty sane");
     exit(0);
 #endif
 }
 
-void error(imacs_buffer* b, char* msg, char* arg) {
+static void error(imacs_buffer* b, char* msg, char* arg) {
     gotorc(b->lines-1, 0);
     printf("%s%s\n", msg, arg); f();
     return;
 }
 
-int readfile(imacs_buffer* b, char* filename) {
+static int readfile(imacs_buffer* b, char* filename) {
 #ifdef OTA
     strncpy((char*)b->buff, (char*)README_md, sizeof(README_md));
     int len = strlen(b->buff) + 1;
@@ -185,7 +185,7 @@ int readfile(imacs_buffer* b, char* filename) {
 // - filename or *scratch*
 // - "(mode)"
 // - All/Top/Bot/33%
-void print_modeline(imacs_buffer* b) {
+static void print_modeline(imacs_buffer* b) {
     gotorc(b->lines - 2, 0);
     inverse(1);
     int chars = 
@@ -201,7 +201,7 @@ void print_modeline(imacs_buffer* b) {
   #include <unistd.h>
 
   // simulate slow terminal!
-  #define putchar(c) ({ usleep(100); putchar(c); f(); }) 
+  //#define putchar(c) ({ usleep(100); putchar(c); f(); }) 
 #endif
 
 static void redraw(imacs_buffer* b) {
@@ -220,7 +220,7 @@ static void redraw(imacs_buffer* b) {
     f();
 }
 
-void update(imacs_buffer* b, int why) {
+static void update(imacs_buffer* b, int why) {
     static imacs_buffer last;
     static int last_len = -1;
     
@@ -253,7 +253,7 @@ void update(imacs_buffer* b, int why) {
     last_len = strlen(b->buff);
 }
 
-int getch_() {
+static int getch_() {
 #ifdef OTA
     char c;
     read(0, (void*)&c, 1);
@@ -276,22 +276,30 @@ int getch_() {
 #define ESC 96 // haha! ESC A or M-A!
 #define META (ESC+'A'-1)
 #define CTRL -64
+#define XTRA 256
 
 #define UPCASE(c) ({ int _c = (c); _c >= 'a' ? _c - 32 : _c; })
 
 // returns 'a', 'A', CTRL + 'A', ESC + 'V', etc...
-int getch() {
+static int getch() {
     int c = getch_();
     if (c == 27) return ESC + UPCASE(getch_());
+    if (c == CTRL + 'X') return XTRA + UPCASE(getch_());
     return c;
 }
 
 #define GETENV(name, default) ({ char* v = getenv(name); v ? atoi(v) : (default); })
 
-void imacs_init(imacs_buffer* b) {
+void imacs_init(imacs_buffer* b, char* s, int maxlen) {
     memset(b, 0, sizeof(*b));
-    b->size = BUFF_SIZE;
-    b->buff = (char*) calloc(1, BUFF_SIZE);
+
+    int len = s ? strlen(s)*130/100 + 1 : 0;
+    if (BUFF_SIZE > len) len = BUFF_SIZE;
+    if (maxlen > len) len = maxlen;
+
+    b->size = len;
+    b->buff = (char*) calloc(1, len);
+    if (s) strncpy((char*)b->buff, s, strlen(s) + 1);
     b->end = b->buff + b->size;
     b->lines = 24;
     b->columns = 80;
@@ -340,15 +348,23 @@ void error_key(imacs_buffer* b, int c) {
 // '[5~': 'PgUp',
 // '[6~': 'PdDown',
 
+// TODO: ugly...
+#ifdef OTA
+  #define NO_MAIN
+#endif
+
+#ifdef NO_MAIN
+int maineditor(imacs_buffer* b) {
+#else
 int main(int argc, char* argv[]) {
     imacs_buffer* b = alloca(sizeof(imacs_buffer));
-    imacs_init(b);
-#ifndef OTA
+    imacs_init(b, NULL, 0);
     if (argc > 1)
         readfile(b, argv[1]);
     else // LOL
-#endif
     readfile(b, "README.md");
+#endif
+
     int screenfull = b->lines - 3;
 
     savescreen();
@@ -362,6 +378,7 @@ int main(int argc, char* argv[]) {
         int len = currentLineLength(b);
         int lines = countLines(b);
         char* p = getpos(b, b->row, b->col);
+        int enter = (c == 13 || c == 99 || c == CTRL + 'J');
         if (0) ;
         else if (c == CTRL + 'P') b->row--;
         else if (c == CTRL + 'N') b->row++;
@@ -376,17 +393,35 @@ int main(int argc, char* argv[]) {
         else if (c == CTRL + 'L') why = 1;
         // modifiers
         #define MOVE(toRel, fromRel) ({ memmove(p + (toRel), p + (fromRel), strlen(p + (fromRel)) + 1); b->dirty++; })
+        #define INS(c) ({ MOVE(1, 0); *p = (c); })
         else if (c == CTRL + 'D') MOVE(0, 1);
-        else if (c == CTRL + 'H' && p > b->buff) { MOVE(-1, 0); b->col--; }
+        else if ((c == CTRL + 'H'  || c == 127) && p > b->buff) { MOVE(-1, 0); b->col--; }
         else if (c == CTRL + 'K') { MOVE(0, len - b->col + (b->col == len)); clearend(); }
         // inserts
-        else if (c == CTRL + 'O') { MOVE(1, 0); *p = '\n'; }
-        else if (c == 10 || c == 13 || c == CTRL + 'J') { MOVE(1, 0); *p = '\n'; b->col = 0; b->row++; }
-
+        else if (c == CTRL + 'O') INS('\n');
+        else if (c == CTRL + 'I' || enter) { // indent
+            if (enter) { INS('\n'); b->row++; p++; }
+            b->col = 0;
+            char* prev = getpos(b, b->row-1, 0);
+            char* this = getpos(b, b->row, 0);
+            if (*this == '\n') while (*prev++ == ' ') { INS(' '); b->col++; }
+            else if (*this == ' ') while (*this++ == ' ') b->col++;
+            if (*p != ' ' && *(p-1) == ' ') { INS(' '); INS(' '); b->col += 2; }
+        }
+        else if (c == CTRL + 'Q') do {
+            printf("  [%c %d %d %d] ", c, c, CTRL + 'V', ESC + 'V'); } while (c=getch() != CTRL + 'C');
+        else if (c == XTRA + CTRL + 'C') break;
+        // lisp interaction TODO: https://www.emacswiki.org/emacs/EvaluatingExpressions
+        else if (c == XTRA + CTRL + 'E') break; // eval expression before point
+        else if (c == META + ':') break; // enter expression on modeline, eval expression 
+        else if (c == XTRA + CTRL + 'Z') break; // suspend
+        else if (c == XTRA + CTRL + 'F') break; // find-file
+        //
         else if (c == 195) 3; // prefix for M-A..
         else if (c < 32 || c > META) error_key(b, c); // not CTRL / ESC / META
-        else { MOVE(1, 0); *p = c; b->col++; insertmode(1); putchar(c); insertmode(0); why = -1; }
+        else { INS(c); b->col++; insertmode(1); putchar(c); insertmode(0); why = -1; }
         #undef MOVE
+        #undef INS
         
         fix(b);
 
@@ -395,8 +430,9 @@ int main(int argc, char* argv[]) {
         update(b, why);
 
         // uncomment to read keys...
-        // do {  printf("  [%c %d %d %d] ", c, c, CTRL + 'V', ESC + 'V'); } while (c=getch()); }
+        
     }
+    return 0;
 }
 
 #ifdef OTA
