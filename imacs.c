@@ -37,6 +37,7 @@ typedef struct {
 
     int row;
     int col;
+    int wantcol;
     int scroll;
     char* filename;
     
@@ -338,13 +339,15 @@ void imacs_init(imacs_buffer* b, char* s, int maxlen) {
 #endif
 }
 
-void fix(imacs_buffer* b) {
+void fix(imacs_buffer* b, int moved) {
     int len = currentLineLength(b);
 
     // fix out of bounds relative to content and screen, loop till no change
     int r, c, l;
     do {
         r = b->row; c = b->col; l = len;
+        if (b->wantcol && moved) { b->wantcol = 0; error(b, "cleared", NULL); }
+        if (b->wantcol) b->col = b->wantcol < len ? b->wantcol : len;
         if (b->col > len) { b->col = 0; b->row++; }
         if (b->col < 0 && b->row) { b->row--; b->col = currentLineLength(b); }
         if (b->row < b->scroll) b->scroll--;
@@ -396,6 +399,7 @@ int main(int argc, char* argv[]) {
     savescreen();
     update(b, 1);
     
+    #define WANT() ({if (!b->wantcol) {b->wantcol = b->col; error(b, "-----", "");}})
     // loop
     int c;
     while ((c = getch()) || 1) {
@@ -403,10 +407,11 @@ int main(int argc, char* argv[]) {
         int why = 0;
         int len = currentLineLength(b);
         int lines = countLines(b);
+        int old = b->dirty * 10 + b->col;
         char* p = getpos(b, b->row, b->col);
         if (0) ;
-        else if (c == CTRL + 'P') b->row--;
-        else if (c == CTRL + 'N') b->row++;
+        else if (c == CTRL + 'P') { b->row--; WANT(); }
+        else if (c == CTRL + 'N') { b->row++; WANT(); }
         else if (c == CTRL + 'F') b->col++;
         else if (c == CTRL + 'B') b->col--;
         else if (c == CTRL + 'A') b->col = 0;
@@ -418,7 +423,7 @@ int main(int argc, char* argv[]) {
         else if (c == CTRL + 'L') why = 1;
         // modifiers
         #define MOVE(toRel, fromRel) ({ memmove(p + (toRel), p + (fromRel), strlen(p + (fromRel)) + 1); b->dirty++; })
-        #define INS(c) ({ MOVE(1, 0); *p = (c); })
+        #define INS(c) ({ MOVE(1, 0); *p = (c); b->dirty++; })
         else if (c == CTRL + 'D') MOVE(0, 1);
         else if ((c == CTRL + 'H'  || c == 127) && p > b->buff) { MOVE(-1, 0); b->col--; }
         else if (c == CTRL + 'K') { MOVE(0, len - b->col + (b->col == len)); clearend(); }
@@ -429,7 +434,7 @@ int main(int argc, char* argv[]) {
             b->col = 0;
             char* prev = getpos(b, b->row-1, 0);
             char* this = getpos(b, b->row, 0);
-            if (*this == '\n') while (*prev++ == ' ') { INS(' '); b->col++; }
+            if (*this == '\n' || !*this) while (*prev++ == ' ') { INS(' '); b->col++; }
             else if (*this == ' ') while (*this++ == ' ') b->col++;
             if (*p != ' ' && *(p-1) == ' ') { INS(' '); INS(' '); b->col += 2; }
         }
@@ -448,7 +453,7 @@ int main(int argc, char* argv[]) {
         #undef MOVE
         #undef INS
         
-        fix(b);
+        fix(b, (b->dirty * 10 + b->col) != old);
 
         if (lines != countLines(b)) why = 1;
 
