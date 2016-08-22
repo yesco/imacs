@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
+#include <ctype.h>
 
 #ifdef OTA
   #include "espressif/esp_common.h"
@@ -377,6 +378,51 @@ void error_key(imacs_buffer* b, int c) {
 // '[5~': 'PgUp',
 // '[6~': 'PdDown',
 
+#ifdef NO_MAIN
+  extern void* global_envp;
+#endif 
+
+void eval_last_expr(imacs_buffer* b, char* end) {
+    // if on symbol - move forward to end of symbol
+    while (isalnum(*end) && end < b->end) end++;
+    end = *end ? end : end-1;
+    // if at spaces move back
+    while (isspace(*end) && end > b->buff) end--;
+    char* p = *end ? end : end-2;
+
+    // count parenthesis
+    int paren = 0;
+    // flag to read symbol fully
+    int sym = isalnum(*end);
+    do {
+        if (p < b->buff) break;
+        if (*p == ')') paren++;
+        if (*p == '(') paren--;
+        if (*p == '"') while (p > b->buff && *--p != '"');
+        if (paren && sym) sym = 0;
+        if (!paren && sym) sym = isalnum(*p);
+        p--;
+    } while (paren || sym);
+    p++;
+    // skip leading spaces
+    while (isspace(*p) && p < b->end-1) p++;
+
+    char* s = strndup(p, end - p + 1);
+
+    cleareos();
+    printf("\n======================================\n");
+    printf("EVAL: %s\n", s); 
+    printf("--------------------------------------\n");
+#ifdef NO_MAIN
+    run(s, global_envp);
+#else
+    printf("ERROR - no eval/run method - install esp-lisp!\n");
+#endif 
+    printf("\n------------------------------------\n");
+    printf("(Press CTRL-L to clear!)\n");
+    free(s);
+}
+
 // TODO: ugly...
 #ifdef OTA
   #define NO_MAIN
@@ -399,7 +445,7 @@ int main(int argc, char* argv[]) {
     savescreen();
     update(b, 1);
     
-    #define WANT() ({if (!b->wantcol) {b->wantcol = b->col; error(b, "-----", "");}})
+    #define WANT() ({if (!b->wantcol) {b->wantcol = b->col; }})
     // loop
     int c;
     while ((c = getch()) || 1) {
@@ -442,7 +488,7 @@ int main(int argc, char* argv[]) {
             printf("  [%c %d %d %d] ", c, c, CTRL + 'V', ESC + 'V'); } while (c=getch() != CTRL + 'C');
         else if (c == XTRA + CTRL + 'C') break;
         // lisp interaction TODO: https://www.emacswiki.org/emacs/EvaluatingExpressions
-        else if (c == XTRA + CTRL + 'E') break; // eval expression before point
+        else if (c == XTRA + CTRL + 'E') eval_last_expr(b, p);
         else if (c == META + ':') break; // enter expression on modeline, eval expression 
         else if (c == XTRA + CTRL + 'Z') break; // suspend
         else if (c == XTRA + CTRL + 'F') break; // find-file
@@ -454,13 +500,8 @@ int main(int argc, char* argv[]) {
         #undef INS
         
         fix(b, (b->dirty * 10 + b->col) != old);
-
         if (lines != countLines(b)) why = 1;
-
         update(b, why);
-
-        // uncomment to read keys...
-        
     }
     return 0;
 }
