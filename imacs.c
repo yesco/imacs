@@ -74,6 +74,7 @@ static void f() { fflush(stdout); }
 
 // vt100 codes
 // http://wiki.bash-hackers.org/scripting/terminalcodes
+// ftp://www.columbia.edu/kermit/ckermit/ckmvt1.txt
 // http://paulbourke.net/dataformats/ascii/
 //
 // Scrolling Functions:
@@ -108,19 +109,8 @@ static void f() { fflush(stdout); }
 //   Scroll display up one line.
 
 //                
-//         Cursor Functions:
-//
-// *  ESC [ pn A        cursor up pn times - stop at top
-// *  ESC [ pn B        cursor down pn times - stop at bottom
-// *  ESC [ pn C        cursor right pn times - stop at far right
-// *  ESC [ pn D        cursor left pn times - stop at far left
-//          *  ESC [ pl ; pc H   set cursor position - pl Line, pc Column
-// *  ESC [ H           set cursor home
-//          *  ESC [ pl ; pc f   set cursor position - pl Line, pc Column
-// *  ESC [ f           set cursor home
 //          *  ESC D             cursor down - at bottom of region, scroll up
 //          *  ESC M             cursor up - at top of region, scroll down
-//          *  ESC E             next line (same as CR LF)
 //          *  ESC 7             save cursor position(char attr,char set,org)
 //          *  ESC 8             restore position (char attr,char set,origin)
 //
