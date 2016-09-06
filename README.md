@@ -25,8 +25,8 @@ Help text, loaded by default
 
       delete line after cursor: ^K
       exit: ^X^C ^X^Z ^X^F
-      eval: ^X^E
       redraw: ^L
+      eval: ^X^E (it has integration with [esp-lisp](https://github.com/yesco/esp-lisp))
 
       TAB indents cleverly, newline too
       1. return will create new line and indent like previous line
@@ -105,6 +105,15 @@ For the nodemcu instead:
 
 to connect to it, then press ^L to redraw the screen!
 
+# Related projects
 
+[Femto-Emacs](https://github.com/FemtoEmacs/Femto-Emacs/blob/master/README.original.md)
+
+
+    Editor         Binary   BinSize     KLOC  Files
+    
+    imacs          imacs      18808     0.364     1
+    femto          femto      43397     2.1k     11
+    atto           atto       33002     1.9k     10
 
 
