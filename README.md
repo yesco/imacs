@@ -23,16 +23,17 @@ Help text, loaded by default
       lines beginning: ^A       end: ^E
       newline   after: ^O    before: RET
 
+      delete line after cursor: ^K
+      exit: ^X^C ^X^Z ^X^F
+      eval: ^X^E
+      redraw: ^L
+
       TAB indents cleverly, newline too
       1. return will create new line and indent like previous line
       2. tab will indent an empty line to the line above
       3. tab pressed anywhere on a line that start with spaces will not
          mess with it, just move cursor to beginning of text (after space)
       4. another press on tab will then indent an additional 2 spaces each time
-
-      delete line after cursor: ^K
-      exit: ^C
-      redraw: ^L
 
       Limitations
       ===========
