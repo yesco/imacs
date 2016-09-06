@@ -35,23 +35,22 @@ Help text, loaded by default
          mess with it, just move cursor to beginning of text (after space)
       4. another press on tab will then indent an additional 2 spaces each time
 
-      Limitations
-      ===========
-      - no arrow keys, just as above and letters
-      - no way to save a file!
-      - no undo/redo
-      - can't handle files with longer lines than terminal width
-      - tabs... get's funny
-      - vt100 only
-      - some things rewrite whole screen!
-      - when you move till after the file end, it gets funny (TOFIX)
-      - big files should mess it up
-      - down/up to line that isn't that wide gets little funny (TOFIX)
-
       Why
       ===
       Support simple editing on embedded systems ala ESP8266 wifi device,
-      115200 baud
+      on speeds like 115200 baud
+
+      Limitations
+      ===========
+      - vt100 only
+      - no undo/redo
+      - no way to save a file!
+      - can't handle files with longer lines than terminal width
+      - tabs... get's funny
+      - some things rewrite whole screen!
+      - when you move till after the file end, it gets funny (TOFIX)
+      - big files should mess it up
+      - Not yet: no arrow keys, just as above and letters
 
 # how to build
 
