@@ -449,7 +449,7 @@ int main(int argc, char* argv[]) {
     // loop
     int c;
     while ((c = getch()) || 1) {
-        int enter = (c == 13 || c == 99 || c == CTRL + 'J');
+        int enter = (c == 13 || c == CTRL + 'J');
         int why = 0;
         int len = currentLineLength(b);
         int lines = countLines(b);
